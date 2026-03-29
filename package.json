@@ -1,0 +1,16 @@
+{
+  "name": "orbit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Orbit - Autonomous dev agent powered by Claude Code",
+  "workspaces": [
+    "core",
+    "bot"
+  ],
+  "scripts": {
+    "build": "npm run build:core && npm run build:bot",
+    "build:core": "npm run --workspace=@orbit/core build",
+    "build:bot": "npm run --workspace=orbit-bot build",
+    "start:bot": "npm run --workspace=orbit-bot start"
+  }
+}

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Orbit data (runtime state, screenshots, logs)
+.orbit-data/
+
+# Claude CLI temp files
+claude_stdout.txt
+claude_stderr.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Context files (user-specific, generated)
+.orbit-context/
