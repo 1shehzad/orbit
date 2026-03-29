@@ -6,6 +6,8 @@ export interface ProjectConfig {
   linearTeamId?: string;
   assigneeId?: string;
   baseBranch?: string; // defaults to "staging"
+  /** AI provider: "claude" (default) or "codex" */
+  aiProvider?: "claude" | "codex";
 }
 
 export interface LinearTicket {

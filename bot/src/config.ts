@@ -65,6 +65,7 @@ export function loadConfig(): BotConfig {
       anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
       projectFolder: requireEnv("PROJECT_FOLDER"),
       baseBranch: process.env.BASE_BRANCH || "staging",
+      aiProvider: (process.env.AI_PROVIDER as "claude" | "codex" | undefined) || "claude",
     },
     port: parseInt(process.env.PORT || "3000", 10),
     clarifyTimeoutMinutes: parseInt(process.env.CLARIFY_TIMEOUT_MINUTES || "10", 10),

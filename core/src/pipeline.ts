@@ -2,7 +2,8 @@ import { EventEmitter } from "node:events";
 import { basename } from "node:path";
 import { LinearClient } from "./linear.js";
 import { GitManager } from "./git.js";
-import { ClaudeAgent } from "./claude.js";
+import { createAgent } from "./agent-factory.js";
+import type { AIAgent } from "./agent-factory.js";
 import type { LinearTicket, TicketStatus, TestCase, QAResult, PRInfo, ProjectConfig } from "./types.js";
 
 export interface PipelineEvents {
@@ -20,7 +21,7 @@ export interface PipelineEvents {
 export class TicketPipeline extends EventEmitter<PipelineEvents> {
   private linear: LinearClient;
   private git: GitManager;
-  private claude: ClaudeAgent;
+  private claude: AIAgent;
   private config: ProjectConfig;
   private _aborted = false;
 
@@ -29,7 +30,7 @@ export class TicketPipeline extends EventEmitter<PipelineEvents> {
     this.config = config;
     this.linear = new LinearClient(config.linearApiKey);
     this.git = new GitManager(config.projectFolder);
-    this.claude = new ClaudeAgent(config.anthropicApiKey);
+    this.claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   }
 
   /** Access the Linear client directly (for ticket creation, etc.) */
@@ -43,7 +44,7 @@ export class TicketPipeline extends EventEmitter<PipelineEvents> {
   abort() {
     this._aborted = true;
     this.claude.killAll();
-    this.log("system", "Pipeline aborted — all Claude processes killed");
+    this.log("system", "Pipeline aborted — all AI processes killed");
   }
 
   private updateStatus(ticketId: string, phase: TicketStatus["phase"], progress: string, extra?: Partial<TicketStatus>) {

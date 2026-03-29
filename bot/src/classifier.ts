@@ -1,4 +1,5 @@
-import { ClaudeAgent } from "@orbit/core";
+import { createAgent } from "@orbit/core";
+import type { AIProvider } from "@orbit/core";
 
 export type MessageType = "query" | "task" | "code_query";
 
@@ -19,8 +20,9 @@ export interface ClassificationResult {
 export async function classifyMessage(
   text: string,
   anthropicApiKey?: string,
+  aiProvider?: AIProvider,
 ): Promise<ClassificationResult> {
-  const claude = new ClaudeAgent(anthropicApiKey);
+  const claude = createAgent(aiProvider ?? "claude", anthropicApiKey);
 
   const result = await claude.run(
     `You are classifying a Slack message directed at a developer. Determine if it's:

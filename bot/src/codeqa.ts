@@ -1,4 +1,4 @@
-import { ClaudeAgent } from "@orbit/core";
+import { createAgent } from "@orbit/core";
 import type { ProjectConfig } from "@orbit/core";
 
 /**
@@ -11,7 +11,7 @@ export async function answerCodeQuestion(
   contextFolder?: string,
   workspaceRoots?: string[],
 ): Promise<string> {
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
 
   // Load context files for additional background (optional)
   let contextBlock = "";

@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ClaudeAgent } from "@orbit/core";
+import { createAgent } from "@orbit/core";
+import type { AIProvider } from "@orbit/core";
 
 /**
  * Load all .md files from the context folder.
@@ -39,9 +40,10 @@ export async function respondToQuery(
   question: string,
   contextFolder: string,
   anthropicApiKey?: string,
+  aiProvider?: AIProvider,
 ): Promise<string> {
   const context = await loadContext(contextFolder);
-  const claude = new ClaudeAgent(anthropicApiKey);
+  const claude = createAgent(aiProvider ?? "claude", anthropicApiKey);
 
   const result = await claude.run(
     `You are responding to a Slack message on behalf of a developer. Use the context below to answer accurately and concisely — as if the developer themselves is typing the reply.

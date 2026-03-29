@@ -1,6 +1,6 @@
 import type { App } from "@slack/bolt";
 import { basename } from "node:path";
-import { GitManager, ClaudeAgent } from "@orbit/core";
+import { GitManager, createAgent } from "@orbit/core";
 import type { ProjectConfig } from "@orbit/core";
 import type { BotConfig } from "./config.js";
 import { resolveProjectConfig } from "./projects.js";
@@ -63,7 +63,7 @@ export async function reviewPR(
   repoHint?: string,
 ): Promise<PRReviewResult> {
   const git = new GitManager(config.projectFolder);
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
 
   // Find the repo
   const repos = await git.discoverRepos();

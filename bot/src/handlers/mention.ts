@@ -94,7 +94,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     // Classify: query or task?
     let classification;
     try {
-      classification = await classifyMessage(cleanText, config.anthropicApiKey);
+      classification = await classifyMessage(cleanText, config.anthropicApiKey, config.aiProvider);
     } catch {
       classification = { type: "task" as const, ack: "On it.", needsClarification: false };
     }
@@ -122,7 +122,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       }
 
       try {
-        const response = await respondToQuery(cleanText, botConfig.contextFolder, config.anthropicApiKey);
+        const response = await respondToQuery(cleanText, botConfig.contextFolder, config.anthropicApiKey, config.aiProvider);
         const prefixed = ownerIsAway ? `_Responding while <@${ownerUserId}> is away:_\n\n${response}` : response;
         await reply(prefixed);
         logInteraction({ timestamp: new Date().toISOString(), userId: msgUser, channelId, type: "query", message: cleanText, summary: response.slice(0, 150) }).catch(() => {});
@@ -263,14 +263,14 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     // Classify
     let classification;
     try {
-      classification = await classifyMessage(problem, config.anthropicApiKey);
+      classification = await classifyMessage(problem, config.anthropicApiKey, config.aiProvider);
     } catch {
       classification = { type: "task" as const, ack: "On it.", needsClarification: false };
     }
 
     if (classification.type === "query") {
       try {
-        const response = await respondToQuery(problem, botConfig.contextFolder, config.anthropicApiKey);
+        const response = await respondToQuery(problem, botConfig.contextFolder, config.anthropicApiKey, config.aiProvider);
         await replyBot(response);
       } catch {
         await replyBot("Let me check on that and get back to you.");
@@ -322,9 +322,9 @@ async function analyzeProblemSilent(
 ): Promise<AnalysisResult> {
   // Reuse the full analyzer but with a no-op app
   // For simplicity, call analyzeProblem with a mock thread and forward result
-  const { GitManager, ClaudeAgent } = await import("@orbit/core");
+  const { GitManager, createAgent } = await import("@orbit/core");
   const git = new GitManager(config.projectFolder);
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   const baseBranch = config.baseBranch || "staging";
   const { basename } = await import("node:path");
 

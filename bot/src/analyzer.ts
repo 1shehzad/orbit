@@ -1,6 +1,6 @@
 import type { App } from "@slack/bolt";
 import { basename } from "node:path";
-import { GitManager, ClaudeAgent } from "@orbit/core";
+import { GitManager, createAgent } from "@orbit/core";
 import type { ProjectConfig } from "@orbit/core";
 import type { ThreadState } from "./threads.js";
 import { textBlock, divider, header, context } from "./slack.js";
@@ -50,7 +50,7 @@ export async function analyzeProblem(
 ): Promise<AnalysisResult> {
   const { channelId, threadTs } = thread;
   const git = new GitManager(config.projectFolder);
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   const baseBranch = config.baseBranch || "staging";
 
   const post = async (text: string) => {
@@ -404,7 +404,7 @@ export async function refineSpec(
   answers: { question: string; answer: string }[],
 ): Promise<{ approved: boolean; questions: string[]; assumptions: string[] }> {
   const { channelId, threadTs } = thread;
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   const analysis = thread.analysisResult!;
 
   const post = async (text: string) => {
@@ -523,7 +523,7 @@ export async function generateAssumptions(
   unansweredQuestions: string[],
 ): Promise<void> {
   const { channelId, threadTs } = thread;
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   const analysis = thread.analysisResult!;
 
   const post = async (text: string) => {
@@ -614,7 +614,7 @@ export async function reclassify(
   thread: ThreadState,
   config: ProjectConfig,
 ): Promise<void> {
-  const claude = new ClaudeAgent(config.anthropicApiKey);
+  const claude = createAgent(config.aiProvider ?? "claude", config.anthropicApiKey);
   const analysis = thread.analysisResult!;
   const { channelId, threadTs } = thread;
 

@@ -1,6 +1,7 @@
 import { writeFile, readFile } from "node:fs/promises";
 import { join, basename } from "node:path";
-import { GitManager, ClaudeAgent } from "@orbit/core";
+import { GitManager, createAgent } from "@orbit/core";
+import type { AIProvider } from "@orbit/core";
 
 /**
  * Analyze recent commits and PRs to learn the user's coding style.
@@ -11,6 +12,7 @@ export async function learnCodeStyle(
   workspaceRoots: string[],
   contextFolder: string,
   anthropicApiKey?: string,
+  aiProvider?: AIProvider,
 ): Promise<string> {
   // Gather recent diffs across all repos
   const diffs: { repo: string; diff: string }[] = [];
@@ -45,7 +47,7 @@ export async function learnCodeStyle(
   }
 
   // Send to Claude for analysis
-  const claude = new ClaudeAgent(anthropicApiKey);
+  const claude = createAgent(aiProvider ?? "claude", anthropicApiKey);
   const allDiffs = diffs.map((d) => `=== ${d.repo} ===\n${d.diff}`).join("\n\n").slice(0, 40000);
 
   const result = await claude.run(
