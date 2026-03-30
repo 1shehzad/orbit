@@ -146,11 +146,6 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       classification = { type: "task" as const, ack: "On it.", needsClarification: false };
     }
 
-    // When owner is away, add a note that we're handling it autonomously
-    if (ownerIsAway && classification.type === "task") {
-      classification.ack = `I'm handling things while <@${ownerUserId}> is away. ${classification.ack || "On it."}`;
-    }
-
     if (classification.type === "query") {
       // Check if it's a meeting prep / sprint question
       const isMeetingPrep = /sprint|standup|review|retro|meeting|status update|progress/i.test(cleanText)
@@ -159,8 +154,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       if (isMeetingPrep) {
         try {
           const prep = await generateMeetingPrep(config, botConfig.workspaceRoots);
-          const prefixed = ownerIsAway ? `_Responding while <@${ownerUserId}> is away:_\n\n${prep}` : prep;
-          await reply(prefixed);
+          await reply(prep);
           logInteraction({ timestamp: new Date().toISOString(), userId: msgUser, channelId, type: "query", message: cleanText, summary: "Meeting prep summary" }).catch(() => {});
         } catch {
           await reply("Let me check on that and get back to you.");
@@ -170,8 +164,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
 
       try {
         const response = await respondToQuery(cleanText, botConfig.contextFolder, config.anthropicApiKey, config.aiProvider);
-        const prefixed = ownerIsAway ? `_Responding while <@${ownerUserId}> is away:_\n\n${response}` : response;
-        await reply(prefixed);
+        await reply(response);
         logInteraction({ timestamp: new Date().toISOString(), userId: msgUser, channelId, type: "query", message: cleanText, summary: response.slice(0, 150) }).catch(() => {});
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
