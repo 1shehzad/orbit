@@ -7,6 +7,11 @@ import { createAndProcessTickets, enterClarifyPhase } from "./mention.js";
 import { runPipeline } from "../runner.js";
 import { resolveProjectConfig } from "../projects.js";
 import { mergeUserConfig } from "../users.js";
+import { classifyMessage } from "../classifier.js";
+import { respondToQuery } from "../responder.js";
+import { answerCodeQuestion } from "../codeqa.js";
+import { isOwnerAway } from "../presence-monitor.js";
+import { logInteraction } from "../interaction-log.js";
 import type { BotConfig } from "../config.js";
 import type { Poster } from "../post.js";
 
@@ -25,8 +30,6 @@ export function registerMessageHandler(app: App, _defaultConfig: ProjectConfig, 
     const threadTs = message.thread_ts;
     const thread = getThread(channelId, threadTs);
 
-    if (!thread) return;
-
     const text = "text" in message ? (message.text || "") : "";
     if (!text.trim()) return;
 
@@ -34,8 +37,6 @@ export function registerMessageHandler(app: App, _defaultConfig: ProjectConfig, 
 
     // Guard: only respond to allowed users
     if (botConfig.allowedUserIds.length > 0 && !botConfig.allowedUserIds.includes(msgUser || "")) return;
-    const channelConfig = resolveProjectConfig(channelId);
-    const config = mergeUserConfig(channelConfig, msgUser || thread.userId);
 
     const replyFn = async (msg: { text: string; thread_ts: string }) => {
       if (poster) {
@@ -45,10 +46,59 @@ export function registerMessageHandler(app: App, _defaultConfig: ProjectConfig, 
       }
     };
 
-    if (thread.phase === "clarifying") {
-      await handleClarifyReply(app, thread, text, config, botConfig, replyFn, threadTs, poster);
-    } else if (thread.phase === "completed") {
-      await handleFeedbackReply(app, thread, text, config, replyFn, threadTs, poster);
+    // If there's an active thread state, handle clarification or feedback
+    if (thread) {
+      const channelConfig = resolveProjectConfig(channelId);
+      const config = mergeUserConfig(channelConfig, msgUser || thread.userId);
+
+      if (thread.phase === "clarifying") {
+        await handleClarifyReply(app, thread, text, config, botConfig, replyFn, threadTs, poster);
+        return;
+      } else if (thread.phase === "completed") {
+        await handleFeedbackReply(app, thread, text, config, replyFn, threadTs, poster);
+        return;
+      }
+      // For other phases (analyzing, executing), fall through to handle as conversation
+    }
+
+    // No thread state OR thread is in a non-interactive phase —
+    // Treat as a follow-up conversation (e.g., replying to a query response)
+    // Only respond when owner is away (or TEST_MODE)
+    if (!isOwnerAway() && !process.env.TEST_MODE) return;
+
+    // Only handle if the bot previously posted in this thread
+    // (check by fetching thread replies and looking for bot messages)
+    const ownerUserId = botConfig.ownerUserId;
+    if (!ownerUserId) return;
+
+    const channelConfig = resolveProjectConfig(channelId);
+    const config = mergeUserConfig(channelConfig, ownerUserId);
+
+    try {
+      const classification = await classifyMessage(text, config.anthropicApiKey, config.aiProvider);
+
+      if (classification.type === "query" || classification.type === "code_query") {
+        let response: string;
+        if (classification.type === "code_query") {
+          response = await answerCodeQuestion(text, config, botConfig.contextFolder, botConfig.workspaceRoots);
+        } else {
+          response = await respondToQuery(text, botConfig.contextFolder, config.anthropicApiKey, config.aiProvider);
+        }
+        await replyFn({ text: response, thread_ts: threadTs });
+        logInteraction({
+          timestamp: new Date().toISOString(),
+          userId: msgUser || "unknown",
+          channelId,
+          type: classification.type,
+          message: text,
+          summary: response.slice(0, 150),
+        }).catch(() => {});
+      } else {
+        // Task — acknowledge and handle
+        await replyFn({ text: classification.ack || "On it.", thread_ts: threadTs });
+      }
+    } catch (err) {
+      console.error("Thread reply handling error:", err);
     }
   });
 }
