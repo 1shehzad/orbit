@@ -3,6 +3,7 @@ import { join, basename } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { BotConfig } from "./config.js";
+import { createAgent } from "@orbit/core";
 import {
   appendObservation,
   resetDedup,
@@ -154,11 +155,11 @@ async function captureScreenshot(dataDir: string): Promise<string | null> {
 }
 
 /**
- * Analyze a screenshot using Claude Code CLI with vision.
- * Passes the screenshot path so Claude can read it.
+ * Analyze a screenshot using the configured AI agent with vision.
+ * Passes the screenshot path so the agent can read it.
  * Returns a short insight string, or null if nothing relevant.
  */
-async function analyzeScreenshot(screenshotPath: string): Promise<string | null> {
+async function analyzeScreenshot(screenshotPath: string, botConfig: BotConfig): Promise<string | null> {
   try {
     const prompt = `Look at this screenshot: ${screenshotPath}
 
@@ -173,16 +174,16 @@ If NOT work-related (social media, entertainment), respond with exactly: SKIP
 
 Respond with ONLY the one-line description or SKIP. Nothing else.`;
 
-    const { stdout } = await exec("claude", [
-      "-p", prompt,
-      "--output-format", "text",
-      "--max-turns", "1",
-    ], { timeout: 60_000, maxBuffer: 1024 * 1024 });
+    const agent = createAgent(
+      botConfig.project.aiProvider ?? "claude",
+      botConfig.project.anthropicApiKey,
+    );
+    const result = await agent.run(prompt, process.cwd());
 
-    const insight = stdout.trim();
+    const insight = result.output.trim();
     if (!insight || insight === "SKIP") return null;
 
-    // Take just the first line in case Claude adds extra
+    // Take just the first line in case the agent adds extra
     return insight.split("\n")[0].trim();
   } catch (err) {
     console.error("Screenshot analysis failed:", err);
@@ -244,7 +245,7 @@ async function takeSnapshot(
     const ssPath = await captureScreenshot(botConfig.dataDir);
     if (ssPath) {
       screenshotFilePath = ssPath;
-      const insight = await analyzeScreenshot(ssPath);
+      const insight = await analyzeScreenshot(ssPath, botConfig);
       if (insight) {
         screenshotInsight = insight;
       }

@@ -19,6 +19,7 @@ import { logInteraction } from "../interaction-log.js";
 import { parseScheduleTime, scheduleTask } from "../scheduler.js";
 import { generateMeetingPrep } from "../meeting-prep.js";
 import { isOwnerAway } from "../presence-monitor.js";
+import { resolveProjectFromMessage, listAvailableProjects } from "../project-resolver.js";
 
 /**
  * Register handler that monitors ALL messages for @mentions of the owner.
@@ -58,18 +59,61 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     const cleanText = text.replace(new RegExp(`<@${ownerUserId}>`, "g"), "").trim();
     if (!cleanText) return;
 
-    // Resolve config
+    // Resolve config — detect project from message text and channel name
     const channelConfig = resolveProjectConfig(channelId);
-    const config = mergeUserConfig(channelConfig, ownerUserId);
+    const baseConfig = mergeUserConfig(channelConfig, ownerUserId);
+
+    // Get channel name for project matching
+    let channelName: string | undefined;
+    try {
+      const info = await client.conversations.info({ channel: channelId });
+      channelName = (info.channel as Record<string, string> | undefined)?.name;
+    } catch {}
+
+    // Fetch recent messages in the channel/DM for context-based project detection
+    let threadMessages: string[] | undefined;
+    try {
+      const history = await client.conversations.history({
+        channel: channelId,
+        limit: 10,
+        latest: messageTs,
+      });
+      threadMessages = (history.messages ?? [])
+        .filter((m) => "text" in m && m.text && !("bot_id" in m && m.bot_id))
+        .map((m) => (m as { text: string }).text)
+        .filter(Boolean);
+    } catch {}
+
+    // Auto-detect project: message → channel → thread context → ask
+    const resolved = await resolveProjectFromMessage(
+      cleanText,
+      botConfig.workspaceRoots,
+      channelName,
+      threadMessages,
+    );
 
     // Helper: post as user or bot
-    const reply = async (text: string) => {
+    const reply = async (replyText: string) => {
       if (poster) {
-        await poster.post(channelId, text, messageTs);
+        await poster.post(channelId, replyText, messageTs);
       } else {
-        await say({ text, thread_ts: messageTs });
+        await say({ text: replyText, thread_ts: messageTs });
       }
     };
+
+    if (resolved.matchType === "none") {
+      // Can't figure out the project — ask the user
+      const projects = await listAvailableProjects(botConfig.workspaceRoots);
+      const projectList = projects.map((p) => `• *${p.name}* (${p.repoCount} repo${p.repoCount !== 1 ? "s" : ""})`).join("\n");
+      await reply(`Which project is this for?\n\n${projectList}\n\nMention the project name and I'll get started.`);
+      return;
+    }
+
+    const config = { ...baseConfig, projectFolder: resolved.projectFolder };
+
+    if (resolved.matchType !== "single") {
+      console.log(`Project detected: "${resolved.projectName}" (${resolved.matchType}) → ${resolved.projectFolder}`);
+    }
 
     const msgUser = "user" in message ? (message as unknown as Record<string, string>).user : "unknown";
 
@@ -204,10 +248,14 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       thread.phase = "analyzing";
       saveThread(thread).catch(() => {});
 
+      await reply(`:mag: Scanning the codebase in *${resolved.projectName}*...`);
       const analysis = await analyzeProblemSilent(config, cleanText);
       thread.analysisResult = analysis;
       thread.spec = analysis.spec;
       saveThread(thread).catch(() => {});
+
+      const ticketCount = analysis.classification.tickets.length;
+      await reply(`:clipboard: Breaking this into ${ticketCount} ticket${ticketCount !== 1 ? "s" : ""}...`);
 
       await createAndProcessTickets(app, thread, config, analysis, poster, botConfig.contextFolder);
     } catch (err) {
@@ -215,7 +263,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       thread.phase = "error";
       thread.errors.push(errorMsg);
       saveThread(thread).catch(() => {});
-      await reply(`Ran into an issue: ${errorMsg}. I'll take another look.`);
+      await reply(`Ran into an issue: ${errorMsg}`);
     }
   });
 
@@ -227,7 +275,7 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     }
 
     const channelConfig = resolveProjectConfig(event.channel);
-    const config = mergeUserConfig(channelConfig, event.user || "unknown");
+    const baseAppConfig = mergeUserConfig(channelConfig, event.user || "unknown");
     const problem = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
 
     if (!problem) {
@@ -242,10 +290,44 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       return;
     }
 
+    // Auto-detect project: message → channel → recent messages → ask
+    let appChannelName: string | undefined;
+    try {
+      const info = await app.client.conversations.info({ channel: event.channel });
+      appChannelName = (info.channel as Record<string, string> | undefined)?.name;
+    } catch {}
+
+    let appThreadMessages: string[] | undefined;
+    try {
+      const history = await app.client.conversations.history({
+        channel: event.channel,
+        limit: 10,
+        latest: event.ts,
+      });
+      appThreadMessages = (history.messages ?? [])
+        .filter((m) => "text" in m && m.text && !("bot_id" in m && m.bot_id))
+        .map((m) => (m as { text: string }).text)
+        .filter(Boolean);
+    } catch {}
+
+    const resolvedApp = await resolveProjectFromMessage(problem, botConfig.workspaceRoots, appChannelName, appThreadMessages);
+    const config = { ...baseAppConfig, projectFolder: resolvedApp.projectFolder };
+
     const replyBot = async (text: string) => {
       if (poster) await poster.post(event.channel, text, threadTs);
       else await say({ text, thread_ts: threadTs });
     };
+
+    if (resolvedApp.matchType === "none") {
+      const projects = await listAvailableProjects(botConfig.workspaceRoots);
+      const projectList = projects.map((p) => `• *${p.name}* (${p.repoCount} repo${p.repoCount !== 1 ? "s" : ""})`).join("\n");
+      await replyBot(`Which project is this for?\n\n${projectList}\n\nMention the project name and I'll get started.`);
+      return;
+    }
+
+    if (resolvedApp.matchType !== "single") {
+      console.log(`Project detected: "${resolvedApp.projectName}" (${resolvedApp.matchType}) → ${resolvedApp.projectFolder}`);
+    }
 
     // Check PR review request
     const prReq = detectPRReview(problem);

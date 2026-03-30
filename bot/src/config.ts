@@ -63,7 +63,7 @@ export function loadConfig(): BotConfig {
       linearApiKey: requireEnv("LINEAR_API_KEY"),
       linearTeamId: process.env.LINEAR_TEAM_ID || undefined,
       anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
-      projectFolder: requireEnv("PROJECT_FOLDER"),
+      projectFolder: process.env.PROJECT_FOLDER || process.env.WORKSPACE_ROOTS?.split(",")[0]?.trim() || process.cwd(),
       baseBranch: process.env.BASE_BRANCH || "staging",
       aiProvider: (process.env.AI_PROVIDER as "claude" | "codex" | undefined) || "claude",
     },

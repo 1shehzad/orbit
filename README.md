@@ -93,7 +93,16 @@ When the owner goes away on Slack, the bot automatically takes over:
    - Click **Generate**
 4. Copy the token — it starts with `xapp-`. This is your `SLACK_APP_TOKEN`
 
-### Step 3: Configure Bot Token Scopes
+### Step 3: Enable Interactivity
+
+1. Go to **Interactivity & Shortcuts** (left sidebar)
+2. Toggle **Interactivity** to ON
+3. No Request URL needed (Socket Mode handles it)
+4. Click **Save Changes**
+
+> **Important:** Slash commands won't work without Interactivity enabled, even in Socket Mode.
+
+### Step 4: Configure Bot Token Scopes
 
 1. Go to **OAuth & Permissions** (left sidebar)
 2. Scroll down to **Scopes** → **Bot Token Scopes**
@@ -116,7 +125,7 @@ When the owner goes away on Slack, the bot automatically takes over:
    | `users:read` | Get user info |
    | `users:read.email` | Get user emails |
 
-### Step 4: Configure User Token Scopes (Optional)
+### Step 5: Configure User Token Scopes (Optional)
 
 This lets the bot post messages **as you** instead of as a bot.
 
@@ -129,7 +138,7 @@ This lets the bot post messages **as you** instead of as a bot.
    | `files:write` | Upload files as you |
    | `users:read` | Read user info |
 
-### Step 5: Enable Events
+### Step 6: Enable Events
 
 1. Go to **Event Subscriptions** (left sidebar)
 2. Toggle **Enable Events** to ON
@@ -141,7 +150,7 @@ This lets the bot post messages **as you** instead of as a bot.
    - `message.mpim` — group DMs
 4. Click **Save Changes**
 
-### Step 6: Add Slash Command
+### Step 7: Add Slash Command
 
 1. Go to **Slash Commands** (left sidebar)
 2. Click **Create New Command**
@@ -149,13 +158,10 @@ This lets the bot post messages **as you** instead of as a bot.
    - Command: `/orbit`
    - Short Description: `Orbit dev agent commands`
    - Usage Hint: `[status|tickets|work|help|prep|catchup|repos|reviews]`
+   - **Leave Request URL blank** (Socket Mode handles routing)
 4. Click **Save**
 
-### Step 7: Enable Away Mode (Presence Detection)
-
-1. Go to **OAuth & Permissions**
-2. Add to **Bot Token Scopes**:
-   - `users:read` (already added above — needed for `users.getPresence`)
+> **Important:** Do NOT set a Request URL on the slash command. In Socket Mode, commands are routed through the WebSocket connection. If a URL is set, Slack sends the request there instead of to your bot, causing "app did not respond" errors.
 
 ### Step 8: Install the App
 
@@ -167,6 +173,8 @@ This lets the bot post messages **as you** instead of as a bot.
    - **User OAuth Token** → starts with `xoxp-` → this is your `SLACK_USER_TOKEN`
 
 ### Step 9: Get the Signing Secret
+
+> **Note:** After installing, any time you add new scopes you must click **Reinstall to Workspace** and update your `SLACK_BOT_TOKEN` in `.env` with the new token.
 
 1. Go to **Basic Information** (left sidebar)
 2. Scroll to **App Credentials**
@@ -211,10 +219,11 @@ LINEAR_API_KEY=lin_api_...
 LINEAR_TEAM_ID=ENG                # Your team key (e.g., ENG, PROD)
 
 # ── AI Provider ──────────────────────────────────────────
-AI_PROVIDER=claude                # "claude" or "codex"
+AI_PROVIDER=claude                # "claude" or "codex" (auto-falls back if one isn't installed)
 
 # ── Project ───────────────────────────────────────────────
-PROJECT_FOLDER=/path/to/your/project
+# PROJECT_FOLDER is optional — bot auto-detects from message, channel, or WORKSPACE_ROOTS
+WORKSPACE_ROOTS=/path/to/your/work  # Parent dir containing your projects
 BASE_BRANCH=staging
 ```
 
@@ -338,3 +347,55 @@ These help the bot answer questions accurately as you.
 | `/orbit standup` | Post standup now |
 | `/orbit learn-style` | Generate code style guide |
 | `/orbit help` | Show all commands |
+
+---
+
+## How Project Detection Works
+
+The bot automatically figures out which project to work on:
+
+1. **Message text** (highest priority) — "fix this bug in **creator**" → uses `creator-fun/`
+2. **Channel name** — message in `#creator-dev` → uses `creator-fun/`
+3. **Conversation context** — scans last 10 messages for project mentions
+4. **Single project** — if you only have one project, uses it automatically
+5. **Ask** — if nothing matches, asks "Which project is this for?" with a list
+
+This means "implement this scale feature in **creator**" sent from `#scale` channel will correctly use the `creator` project, not `scale`.
+
+---
+
+## Troubleshooting
+
+### `/orbit` says "app did not respond"
+
+- Go to **Slash Commands** in your Slack app settings
+- Make sure the `/orbit` command has **no Request URL** (leave blank — Socket Mode handles routing)
+- Make sure **Interactivity** is enabled (Step 3)
+- Delete and re-create the command if needed
+
+### `missing_scope` errors in console
+
+- Go to **OAuth & Permissions** → add the missing scope shown in the error
+- Click **Reinstall to Workspace**
+- Update `SLACK_BOT_TOKEN` in `.env` with the new token
+- Restart the bot
+
+### Bot not responding to @mentions
+
+- Make sure **Event Subscriptions** are enabled with `message.channels`, `message.groups`, `message.im`, `app_mention`
+- Make sure the bot is invited to the channel: `/invite @Orbit`
+- For self-testing, set `TEST_MODE=1` in `.env`
+
+### Bot says "On it" but then nothing happens
+
+- Check terminal logs for errors
+- Make sure your AI provider is installed and authenticated:
+  - Claude: `claude --version` and `claude login`
+  - Codex: `codex --version` and `codex login`
+- The bot auto-falls back if the configured provider isn't installed
+- Analysis can take several minutes on large codebases — check logs for progress
+
+### `No repos found with "staging" branch`
+
+- Your `PROJECT_FOLDER` or detected project doesn't have a `staging` branch
+- Set `BASE_BRANCH` in `.env` to match your repo's default branch (e.g., `main`)
