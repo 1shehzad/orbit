@@ -203,7 +203,7 @@ IMPORTANT:
     );
 
     if (!result.success || !result.output) {
-      const errorMsg = result.error || "Claude failed";
+      const errorMsg = result.error || "AI agent failed";
       this.log("error", `${ticket.identifier} failed: ${errorMsg}`);
       this.updateStatus(ticket.id, "error", errorMsg);
       return;
@@ -591,7 +591,7 @@ Do NOT ask questions. Just fix it.`;
       this.log("success", `${ticket.identifier} — fix applied, please re-test`);
       this.emit("fix_complete", { ticketId: ticket.id });
     } else {
-      const errorMsg = result.error || "Claude failed to fix";
+      const errorMsg = result.error || "AI agent failed to fix";
       this.log("error", `${ticket.identifier} fix failed: ${errorMsg}`);
       this.updateStatus(ticket.id, "error", errorMsg);
     }

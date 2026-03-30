@@ -14,6 +14,7 @@ import { startActivityMonitor } from "./monitor.js";
 import { initInteractionLog } from "./interaction-log.js";
 import { initScheduler, startScheduledTimers } from "./scheduler.js";
 import { startPresenceMonitor } from "./presence-monitor.js";
+import { startDMMonitor } from "./dm-monitor.js";
 
 async function main() {
   const config = loadConfig();
@@ -56,6 +57,9 @@ async function main() {
 
   // Start presence monitor (detects when owner goes away → bot takes over)
   startPresenceMonitor(app, config);
+
+  // Start DM monitor (polls owner's personal DMs and responds when away)
+  startDMMonitor(app, config);
 
   // Resume scheduled tasks from disk
   const scheduledCount = startScheduledTimers(async (task) => {

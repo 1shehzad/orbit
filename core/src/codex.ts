@@ -135,10 +135,10 @@ export class CodexAgent {
       if (onProgress) onProgress("Starting Codex...");
       debugLog(`Running Codex: cwd=${cwd}, prompt=${prompt.length} chars`);
 
-      // codex exec with full-auto approval (no user confirmation needed)
-      // --full-auto: approve all file writes and commands automatically
-      // Prompt is sent via stdin to avoid shell argument length limits
-      const args = ["exec", "--full-auto", "-q", "-"];
+      // codex exec: run prompt and return result
+      // Prompt is sent via stdin ("-") to avoid shell argument length limits
+      // --full-auto: approve all file writes and commands automatically (if supported)
+      const args = ["exec", "--full-auto", "-"];
 
       const isCmd = codexPath.endsWith(".cmd") || codexPath.endsWith(".bat");
       const child = spawn(codexPath, args, {

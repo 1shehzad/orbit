@@ -2,6 +2,9 @@ import type { App } from "@slack/bolt";
 import type { BotConfig } from "./config.js";
 import { getInteractionsSince, formatCatchUp } from "./interaction-log.js";
 
+/** Store the owner's original status so we can restore it when they come back */
+let savedStatus: { text: string; emoji: string } | null = null;
+
 /**
  * Owner presence state — tracks whether the owner user is active or away.
  * When the owner goes away, the bot automatically takes over and handles
@@ -92,6 +95,9 @@ async function handleTransition(
       since: new Date(),
       catchUpPosted: false,
     };
+
+    // Announce in standup channel that the bot is taking over
+    await announceStatus(app, botConfig, "away");
   } else if (oldStatus === "away" && newStatus === "active") {
     // Owner came back — post catch-up and step back
     console.log("Owner came back — autonomous mode deactivated");
@@ -103,8 +109,66 @@ async function handleTransition(
       catchUpPosted: false,
     };
 
-    // Post catch-up summary in the standup channel or a DM
+    // Announce that the owner is back
+    await announceStatus(app, botConfig, "active");
+
+    // Post catch-up summary via DM
     await postCatchUp(app, botConfig, awaySince);
+  }
+}
+
+/**
+ * Update the owner's Slack status when they go away/come back.
+ * When away: saves current status, sets "Away — DM @Orbit for help"
+ * When back: restores the original status
+ */
+async function announceStatus(
+  app: App,
+  botConfig: BotConfig,
+  status: "away" | "active",
+): Promise<void> {
+  // Need user token to update the owner's profile status
+  if (!botConfig.slack.userToken) return;
+
+  try {
+    if (status === "away") {
+      // Save the current status before overwriting
+      const profile = await app.client.users.profile.get({
+        token: botConfig.slack.userToken,
+        user: botConfig.ownerUserId,
+      });
+
+      const current = profile.profile as Record<string, string> | undefined;
+      savedStatus = {
+        text: current?.status_text || "",
+        emoji: current?.status_emoji || "",
+      };
+
+      // Set away status directing people to DM the bot
+      await app.client.users.profile.set({
+        token: botConfig.slack.userToken,
+        profile: {
+          status_text: "Away — DM @Orbit for anything you need",
+          status_emoji: ":robot_face:",
+        } as unknown as Record<string, unknown>,
+      });
+
+      console.log("Slack status updated: away — directing to Orbit bot");
+    } else {
+      // Restore original status
+      await app.client.users.profile.set({
+        token: botConfig.slack.userToken,
+        profile: {
+          status_text: savedStatus?.text || "",
+          status_emoji: savedStatus?.emoji || "",
+        } as unknown as Record<string, unknown>,
+      });
+
+      savedStatus = null;
+      console.log("Slack status restored to original");
+    }
+  } catch (err) {
+    console.error("Failed to update Slack status:", err);
   }
 }
 

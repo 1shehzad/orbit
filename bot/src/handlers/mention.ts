@@ -47,13 +47,19 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     const channelId = message.channel;
     const messageTs = "ts" in message ? message.ts : "";
 
-    // Detect DMs: channel type "im" means it's a direct message
+    // Detect DMs: channel type "im" means it's a direct message to the bot
     const channelType = "channel_type" in message ? (message as unknown as Record<string, unknown>).channel_type : undefined;
     const isDM = channelType === "im";
 
     // In channels: only respond if the owner is mentioned
     // In DMs: respond to everything (it's directed at you)
     if (!isDM && !text.includes(`<@${ownerUserId}>`)) return;
+
+    // ─── CORE BEHAVIOR: only respond when owner is away ───
+    // When owner is online, they handle everything themselves.
+    // Bot only takes over when owner goes away.
+    const ownerIsAway = isOwnerAway();
+    if (!ownerIsAway && !process.env.TEST_MODE) return;
 
     // Strip the owner mention from the text (DMs won't have it)
     const cleanText = text.replace(new RegExp(`<@${ownerUserId}>`, "g"), "").trim();
@@ -131,9 +137,6 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
       }
       return;
     }
-
-    // ─── Away mode: auto-handle when owner is away ───
-    const ownerIsAway = isOwnerAway();
 
     // Classify: query or task?
     let classification;
@@ -273,6 +276,9 @@ export function registerMentionHandler(app: App, _defaultConfig: ProjectConfig, 
     if (botConfig.allowedUserIds.length > 0 && !botConfig.allowedUserIds.includes(event.user || "")) {
       return;
     }
+
+    // Only respond when owner is away (unless TEST_MODE)
+    if (!isOwnerAway() && !process.env.TEST_MODE) return;
 
     const channelConfig = resolveProjectConfig(event.channel);
     const baseAppConfig = mergeUserConfig(channelConfig, event.user || "unknown");

@@ -137,6 +137,10 @@ This lets the bot post messages **as you** instead of as a bot.
    | `chat:write` | Post messages as you |
    | `files:write` | Upload files as you |
    | `users:read` | Read user info |
+   | `im:read` | List your DM conversations (for DM auto-reply) |
+   | `im:history` | Read your DM messages (for DM auto-reply) |
+   | `users.profile:read` | Read your profile status |
+   | `users.profile:write` | Update your status when away |
 
 ### Step 6: Enable Events
 
@@ -302,12 +306,19 @@ ACTIVITY_CONTEXT_DAYS=7
 
 ### Away Mode
 
-Bot auto-handles all @mentions when your Slack status is "away".
+When you go away on Slack, the bot takes over completely:
+- Responds to @mentions in channels (as you)
+- **Reads and replies to your personal DMs** (as you — completely seamless)
+- Updates your Slack status to direct people to the bot
+- Posts a catch-up summary when you come back
 
 ```env
 AWAY_MODE_ENABLED=true
 PRESENCE_POLL_SECONDS=60
+DM_POLL_SECONDS=30
 ```
+
+> **Important:** For DM auto-reply to work, your **User Token** needs `im:read`, `im:history`, `users.profile:read`, and `users.profile:write` scopes. After adding these scopes, **reinstall the app** and update `SLACK_USER_TOKEN` in `.env` with the new token.
 
 ### Daily Standup
 
@@ -394,6 +405,15 @@ This means "implement this scale feature in **creator**" sent from `#scale` chan
   - Codex: `codex --version` and `codex login`
 - The bot auto-falls back if the configured provider isn't installed
 - Analysis can take several minutes on large codebases — check logs for progress
+
+### DM auto-reply not working when away
+
+- Make sure `AWAY_MODE_ENABLED=true` in `.env`
+- Make sure `SLACK_USER_TOKEN` is set (the `xoxp-...` token)
+- Add `im:read` and `im:history` to **User Token Scopes** in your Slack app
+- **Reinstall the app** after adding scopes and update `SLACK_USER_TOKEN` with the new token
+- The DM monitor only activates when your Slack presence is "away"
+- For testing, set `TEST_MODE=1` in `.env`
 
 ### `No repos found with "staging" branch`
 

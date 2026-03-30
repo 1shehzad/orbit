@@ -43,6 +43,8 @@ export interface BotConfig {
   awayModeEnabled: boolean;
   /** Seconds between Slack presence polls (default: 60) */
   presencePollSeconds: number;
+  /** Seconds between DM polls when owner is away (default: 30) */
+  dmPollSeconds: number;
 }
 
 function requireEnv(name: string): string {
@@ -89,5 +91,6 @@ export function loadConfig(): BotConfig {
     activityContextDays: parseInt(process.env.ACTIVITY_CONTEXT_DAYS || "7", 10),
     awayModeEnabled: process.env.AWAY_MODE_ENABLED === "true",
     presencePollSeconds: parseInt(process.env.PRESENCE_POLL_SECONDS || "60", 10),
+    dmPollSeconds: parseInt(process.env.DM_POLL_SECONDS || "30", 10),
   };
 }
