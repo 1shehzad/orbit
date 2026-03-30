@@ -91,6 +91,6 @@ export function loadConfig(): BotConfig {
     activityContextDays: parseInt(process.env.ACTIVITY_CONTEXT_DAYS || "7", 10),
     awayModeEnabled: process.env.AWAY_MODE_ENABLED === "true",
     presencePollSeconds: parseInt(process.env.PRESENCE_POLL_SECONDS || "60", 10),
-    dmPollSeconds: parseInt(process.env.DM_POLL_SECONDS || "30", 10),
+    dmPollSeconds: parseInt(process.env.DM_POLL_SECONDS || "60", 10),
   };
 }

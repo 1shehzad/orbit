@@ -7,24 +7,27 @@ import { answerCodeQuestion } from "./codeqa.js";
 import { resolveProjectConfig } from "./projects.js";
 import { mergeUserConfig } from "./users.js";
 import { logInteraction } from "./interaction-log.js";
-import { resolveProjectFromMessage } from "./project-resolver.js";
 
 /**
  * DM Monitor — polls the owner's personal DMs using the user token.
  * When the owner is away, automatically responds to incoming DMs
  * using context files, making it look like the owner replied.
  *
- * This uses conversations.list (types=im) + conversations.history
- * with the user token (xoxp-...) to read the owner's actual DMs.
+ * Efficient polling strategy:
+ * - Only polls conversations.list once per cycle (1 API call)
+ * - Only calls conversations.history on channels with NEW messages (checks updated timestamp)
+ * - Typically 1-3 API calls per cycle instead of 50+
  */
 
 let pollTimer: NodeJS.Timeout | null = null;
-let lastCheckedTs: string = (Date.now() / 1000).toFixed(6);
+let lastPollTime = Date.now();
 
-// Track DM channels we've already seen to avoid re-processing
+// Track which DM channels we last checked and their latest message ts
+const channelLastSeen = new Map<string, number>();
+
+// Track processed message ts to avoid double-responding
 const processedMessages = new Set<string>();
-// Cap the set size to prevent memory leaks
-const MAX_PROCESSED = 5000;
+const MAX_PROCESSED = 2000;
 
 /**
  * Start polling the owner's DMs.
@@ -45,12 +48,10 @@ export function startDMMonitor(app: App, botConfig: BotConfig): void {
     return;
   }
 
-  // Set initial timestamp to now (don't process old messages)
-  lastCheckedTs = (Date.now() / 1000).toFixed(6);
+  lastPollTime = Date.now();
 
   const intervalMs = (botConfig.dmPollSeconds ?? 30) * 1000;
 
-  // Poll on interval
   pollTimer = setInterval(() => {
     pollDMs(app, botConfig).catch((err) => {
       console.error("DM poll error:", err);
@@ -72,6 +73,7 @@ export function stopDMMonitor(): void {
 
 /**
  * Poll for new DMs sent to the owner.
+ * Efficient: only fetches history for channels with new activity.
  */
 async function pollDMs(app: App, botConfig: BotConfig): Promise<void> {
   // Only respond when owner is away
@@ -81,34 +83,47 @@ async function pollDMs(app: App, botConfig: BotConfig): Promise<void> {
   if (!userToken) return;
 
   try {
-    // Get all DM conversations for the owner
+    // Single API call: get all DM conversations with updated timestamps
     const convos = await app.client.conversations.list({
       token: userToken,
       types: "im",
-      limit: 50,
+      limit: 100,
+      exclude_archived: true,
     });
 
     const dmChannels = convos.channels ?? [];
+    const pollStartTime = lastPollTime;
+    lastPollTime = Date.now();
 
     for (const channel of dmChannels) {
       if (!channel.id) continue;
-
-      // Skip DMs with the bot itself
+      // Skip DMs with yourself
       if (channel.user === botConfig.ownerUserId) continue;
 
-      // Fetch new messages since last check
+      // Check if this channel has new activity since we last checked
+      // conversations.list returns `updated` timestamp (epoch seconds)
+      const updatedTs = (channel as Record<string, unknown>).updated as number | undefined;
+      const lastSeen = channelLastSeen.get(channel.id) || 0;
+
+      if (updatedTs && updatedTs * 1000 <= lastSeen) {
+        // No new activity in this channel — skip
+        continue;
+      }
+
+      // This channel has new activity — fetch recent messages
       try {
+        const oldest = (pollStartTime / 1000).toFixed(6);
         const history = await app.client.conversations.history({
           token: userToken,
           channel: channel.id,
-          oldest: lastCheckedTs,
-          limit: 10,
+          oldest,
+          limit: 5,
         });
 
         const messages = history.messages ?? [];
 
         for (const msg of messages) {
-          // Skip messages from the owner (we only want incoming messages from others)
+          // Skip messages from the owner
           if (msg.user === botConfig.ownerUserId) continue;
           // Skip bot messages
           if (msg.bot_id) continue;
@@ -122,21 +137,27 @@ async function pollDMs(app: App, botConfig: BotConfig): Promise<void> {
           // Handle this DM
           await handleIncomingDM(app, botConfig, channel.id, msg.user || "unknown", msg.text.trim(), msg.ts);
         }
-      } catch (err) {
-        // conversations.history can fail for archived/closed DMs — skip
+      } catch {
+        // conversations.history can fail for closed DMs — skip silently
       }
-    }
 
-    // Update timestamp for next poll
-    lastCheckedTs = (Date.now() / 1000).toFixed(6);
+      // Mark this channel as checked
+      channelLastSeen.set(channel.id, Date.now());
+    }
 
     // Trim processed messages set
     if (processedMessages.size > MAX_PROCESSED) {
-      const toDelete = [...processedMessages].slice(0, processedMessages.size - MAX_PROCESSED);
-      for (const ts of toDelete) processedMessages.delete(ts);
+      const entries = [...processedMessages];
+      for (const ts of entries.slice(0, processedMessages.size - MAX_PROCESSED)) {
+        processedMessages.delete(ts);
+      }
     }
   } catch (err) {
-    console.error("DM poll conversations.list error:", err);
+    // Log but don't spam — rate limit errors are handled by Bolt's retry
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (!errMsg.includes("rate_limited") && !errMsg.includes("ratelimited")) {
+      console.error("DM poll error:", errMsg);
+    }
   }
 }
 
@@ -149,7 +170,7 @@ async function handleIncomingDM(
   channelId: string,
   senderId: string,
   text: string,
-  messageTs: string,
+  _messageTs: string,
 ): Promise<void> {
   const userToken = botConfig.slack.userToken;
 
@@ -209,13 +230,7 @@ async function handleIncomingDM(
       return;
     }
 
-    // For tasks in DMs, acknowledge and explain the limitation
-    await reply(
-      `Got it, I'll look into this. Since this is a DM, I'll handle it as a query for now. ` +
-      `For full task execution (tickets, PRs), mention me in a channel.`
-    );
-
-    // Still try to answer as a query
+    // For tasks in DMs, respond as a query since we can't run full pipeline in a DM thread
     const response = await respondToQuery(text, botConfig.contextFolder, config.anthropicApiKey, config.aiProvider);
     await reply(response);
 
