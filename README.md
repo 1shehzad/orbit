@@ -76,12 +76,49 @@ When the owner goes away on Slack, the bot automatically takes over:
 
 ## Getting Started
 
-### Step 1: Create a Slack App
+### Option A: Automated Setup (Recommended)
+
+Playwright opens a browser, creates the Slack app, extracts tokens, and writes `.env` for you:
+
+```bash
+git clone https://github.com/1shehzad/orbit.git
+cd orbit
+npm run setup:auto
+```
+
+The script:
+1. Installs dependencies and builds the project
+2. Opens a browser — you log into Slack (handles 2FA)
+3. Playwright creates the app from manifest, installs it, extracts all tokens
+4. Asks for Linear key, workspace root, and preferences
+5. Writes `bot/.env` automatically
+
+### Option B: Interactive CLI Setup
+
+No browser automation — the wizard walks you through manually:
+
+```bash
+git clone https://github.com/1shehzad/orbit.git
+cd orbit
+npm run setup
+```
+
+### Option C: Manual Setup
+
+<details>
+<summary>Click to expand full manual setup steps</summary>
+
+#### Step 1: Create a Slack App
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App**
-2. Choose **From scratch**
-3. Enter app name (e.g., "Orbit") and select your workspace
-4. Click **Create App**
+2. Choose **From an app manifest**
+3. Select your workspace
+4. Switch to **JSON** tab, paste contents of `slack-app-manifest.json`
+5. Click **Create** → **Install to Workspace** → **Allow**
+
+This configures all scopes, events, commands, socket mode, and interactivity in one step.
+
+Alternatively, create from scratch:
 
 ### Step 2: Enable Socket Mode
 
@@ -196,6 +233,8 @@ In each Slack channel where you want the bot to work:
 ```
 /invite @Orbit
 ```
+
+</details>
 
 ---
 

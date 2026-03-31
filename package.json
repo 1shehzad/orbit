@@ -11,6 +11,12 @@
     "build": "npm run build:core && npm run build:bot",
     "build:core": "npm run --workspace=@orbit/core build",
     "build:bot": "npm run --workspace=orbit-bot build",
-    "start:bot": "npm run --workspace=orbit-bot start"
+    "start:bot": "npm run --workspace=orbit-bot start",
+    "setup": "bash setup.sh",
+    "setup:auto": "npx tsx setup-auto.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0",
+    "tsx": "^4.19.0"
   }
 }
